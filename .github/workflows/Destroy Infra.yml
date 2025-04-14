@@ -1,97 +1,32 @@
-name: Terraform Destroy Infrastructure
+name: Destroy AWS EKS Infrastructure
+
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger
+
 jobs:
-  destroy:
+  terraform-destroy:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
     - name: Set up Terraform
       uses: hashicorp/setup-terraform@v2
       with:
         terraform_version: 1.6.3
+
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
-    - name: Clear Stale State
-      run: rm -f terraform.tfstate terraform.tfstate.backup
-      working-directory: ./terraform
-      continue-on-error: true
+
     - name: Terraform Init
       run: terraform init
       working-directory: ./terraform
-    - name: List Terraform State
-      run: terraform state list
-      working-directory: ./terraform
-      continue-on-error: true
+
     - name: Terraform Destroy
       run: terraform destroy -auto-approve
       working-directory: ./terraform
-      continue-on-error: true
-    - name: Verify State
-      run: terraform state list
-      working-directory: ./terraform
-      continue-on-error: true
-    - name: Manual Cleanup ap-northeast-2
-      run: |
-        aws ecr delete-repository --repository-name rb-ecr --region ${{ secrets.AWS_REGION }} --force || true
-        aws ecr delete-repository --repository-name my-app-ecr --region ${{ secrets.AWS_REGION }} --force || true
-        aws eks delete-cluster --cluster-name RB-eks-cluster --region ${{ secrets.AWS_REGION }} || true
-        for vpc in $(aws ec2 describe-vpcs --region ${{ secrets.AWS_REGION }} --query 'Vpcs[?Tags[?Key==`Name` && Value==`rb-vpc`]].VpcId' --output text); do
-          for subnet in $(aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc --region ${{ secrets.AWS_REGION }} --query 'Subnets[].SubnetId' --output text); do
-            aws ec2 delete-subnet --subnet-id $subnet --region ${{ secrets.AWS_REGION }} || true
-          done
-          for igw in $(aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=$vpc --region ${{ secrets.AWS_REGION }} --query 'InternetGateways[].InternetGatewayId' --output text); do
-            aws ec2 detach-internet-gateway --internet-gateway-id $igw --vpc-id $vpc --region ${{ secrets.AWS_REGION }} || true
-            aws ec2 delete-internet-gateway --internet-gateway-id $igw --region ${{ secrets.AWS_REGION }} || true
-          done
-          for nat in $(aws ec2 describe-nat-gateways --filter Name=vpc-id,Values=$vpc --region ${{ secrets.AWS_REGION }} --query 'NatGateways[].NatGatewayId' --output text); do
-            aws ec2 delete-nat-gateway --nat-gateway-id $nat --region ${{ secrets.AWS_REGION }} || true
-          done
-          aws ec2 delete-vpc --vpc-id $vpc --region ${{ secrets.AWS_REGION }} || true
-        done
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    - name: Manual Cleanup ap-south-1
-      run: |
-        aws ecr delete-repository --repository-name rb-ecr --region ap-south-1 --force || true
-        aws ecr delete-repository --repository-name my-app-ecr --region ap-south-1 --force || true
-        aws eks delete-cluster --cluster-name RB-eks-cluster --region ap-south-1 || true
-        for vpc in $(aws ec2 describe-vpcs --region ap-south-1 --query 'Vpcs[].VpcId' --output text); do
-          for subnet in $(aws ec2 describe-subnets --filters Name=vpc-id,Values=$vpc --region ap-south-1 --query 'Subnets[].SubnetId' --output text); do
-            aws ec2 delete-subnet --subnet-id $subnet --region ap-south-1 || true
-          done
-          for igw in $(aws ec2 describe-internet-gateways --filters Name=attachment.vpc-id,Values=$vpc --region ap-south-1 --query 'InternetGateways[].InternetGatewayId' --output text); do
-            aws ec2 detach-internet-gateway --internet-gateway-id $igw --vpc-id $vpc --region ap-south-1 || true
-            aws ec2 delete-internet-gateway --internet-gateway-id $igw --region ap-south-1 || true
-          done
-          for nat in $(aws ec2 describe-nat-gateways --filter Name=vpc-id,Values=$vpc --region ap-south-1 --query 'NatGateways[].NatGatewayId' --output text); do
-            aws ec2 delete-nat-gateway --nat-gateway-id $nat --region ap-south-1 || true
-          done
-          aws ec2 delete-vpc --vpc-id $vpc --region ap-south-1 || true
-        done
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    - name: Verify Resources
-      run: |
-        echo "VPCs in ap-northeast-2:"
-        aws ec2 describe-vpcs --region ${{ secrets.AWS_REGION }}
-        echo "EKS Clusters in ap-northeast-2:"
-        aws eks list-clusters --region ${{ secrets.AWS_REGION }}
-        echo "ECR Repositories in ap-northeast-2:"
-        aws ecr describe-repositories --region ${{ secrets.AWS_REGION }}
-        echo "VPCs in ap-south-1:"
-        aws ec2 describe-vpcs --region ap-south-1
-        echo "EKS Clusters in ap-south-1:"
-        aws eks list-clusters --region ap-south-1
-        echo "ECR Repositories in ap-south-1:"
-        aws ecr describe-repositories --region ap-south-1
-      env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
