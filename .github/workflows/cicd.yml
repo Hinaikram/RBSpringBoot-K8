@@ -1,3 +1,5 @@
+name: Terraform CI/CD for EKS
+
 on:
   push:
     branches: [main]
@@ -11,46 +13,41 @@ env:
 
 jobs:
   terraform:
+    name: Terraform Deploy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform  # update if your terraform code is elsewhere
+
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.6.3
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Check if KMS Alias exists
-      - name: Check if KMS Alias exists
+      - name: Check existing KMS alias and CloudWatch log group
         run: |
-          alias_name="alias/eks/RB-eks-cluster"
-          if aws kms list-aliases --query "Aliases[?AliasName=='$alias_name']" | grep -q $alias_name; then
-            echo "KMS alias already exists. Skipping creation."
-          else
-            echo "KMS alias does not exist. Proceeding with creation."
-            terraform init
-            terraform apply -auto-approve
-          fi
+          echo "Checking for KMS alias..."
+          aws kms list-aliases --query "Aliases[?AliasName=='alias/eks/RB-eks-cluster']" | grep -q "alias/eks/RB-eks-cluster" \
+            && echo "KMS alias already exists." || echo "KMS alias does not exist."
 
-      # Check if CloudWatch Log Group exists
-      - name: Check if CloudWatch Log Group exists
-        run: |
-          log_group_name="/aws/eks/RB-eks-cluster/cluster"
-          if aws logs describe-log-groups --log-group-name-prefix $log_group_name --query "logGroups[?logGroupName=='$log_group_name']" | grep -q $log_group_name; then
-            echo "CloudWatch Log Group already exists. Skipping creation."
-          else
-            echo "CloudWatch Log Group does not exist. Proceeding with creation."
-            terraform init
-            terraform apply -auto-approve
-          fi
+          echo "Checking for CloudWatch log group..."
+          aws logs describe-log-groups --log-group-name-prefix "/aws/eks/RB-eks-cluster/cluster" \
+            --query "logGroups[?logGroupName=='/aws/eks/RB-eks-cluster/cluster']" | grep -q "/aws/eks/RB-eks-cluster/cluster" \
+            && echo "CloudWatch log group already exists." || echo "Log group does not exist."
+
+      - name: Terraform Init
+        run: terraform init
 
       # Terraform Plan step
       - name: Terraform Plan
