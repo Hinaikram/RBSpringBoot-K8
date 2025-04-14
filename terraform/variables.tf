@@ -26,13 +26,13 @@ variable "aws_resource_prefix" {
   }
 }
 
-variable "s3_bucket" {
-  description = "S3 bucket for Terraform state"
-  type        = string
-}
-
-variable "dynamodb_table" {
-  description = "DynamoDB table for state locking"
-  type        = string
-}
+#variable "s3_bucket" {
+#  description = "S3 bucket for Terraform state"
+ # type        = string
+#}
+#
+#variable "dynamodb_table" {
+#  description = "DynamoDB table for state locking"
+#  type        = string
+#}
 
