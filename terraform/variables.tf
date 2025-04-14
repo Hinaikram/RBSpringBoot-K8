@@ -1,4 +1,3 @@
-# variables.tf
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
@@ -26,3 +25,14 @@ variable "aws_resource_prefix" {
     error_message = "aws_resource_prefix must contain only letters, numbers, or hyphens."
   }
 }
+
+variable "s3_bucket" {
+  description = "S3 bucket for Terraform state"
+  type        = string
+}
+
+variable "dynamodb_table" {
+  description = "DynamoDB table for state locking"
+  type        = string
+}
+
