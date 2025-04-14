@@ -1,7 +1,8 @@
+# variables.tf
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-southeast-2"
 }
 
 variable "cluster_name" {
@@ -19,7 +20,7 @@ variable "ecr_repository_name" {
 variable "aws_resource_prefix" {
   description = "Prefix for naming AWS resources"
   type        = string
-  default     = "rb"  # Changed to align with 'RB' naming convention in other variables
+  default     = "rb"
   validation {
     condition     = can(regex("^[a-zA-Z0-9-]+$", var.aws_resource_prefix))
     error_message = "aws_resource_prefix must contain only letters, numbers, or hyphens."
