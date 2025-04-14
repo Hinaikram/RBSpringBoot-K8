@@ -1,0 +1,1 @@
+aws_resource_prefix = "my-app"
