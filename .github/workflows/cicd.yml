@@ -1,5 +1,3 @@
-name: Build and Deploy Spring Boot App to EKS
-
 on:
   push:
     branches: [main]
@@ -30,14 +28,36 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
+      # Check if KMS Alias exists
+      - name: Check if KMS Alias exists
+        run: |
+          alias_name="alias/eks/RB-eks-cluster"
+          if aws kms list-aliases --query "Aliases[?AliasName=='$alias_name']" | grep -q $alias_name; then
+            echo "KMS alias already exists. Skipping creation."
+          else
+            echo "KMS alias does not exist. Proceeding with creation."
+            terraform init
+            terraform apply -auto-approve
+          fi
 
+      # Check if CloudWatch Log Group exists
+      - name: Check if CloudWatch Log Group exists
+        run: |
+          log_group_name="/aws/eks/RB-eks-cluster/cluster"
+          if aws logs describe-log-groups --log-group-name-prefix $log_group_name --query "logGroups[?logGroupName=='$log_group_name']" | grep -q $log_group_name; then
+            echo "CloudWatch Log Group already exists. Skipping creation."
+          else
+            echo "CloudWatch Log Group does not exist. Proceeding with creation."
+            terraform init
+            terraform apply -auto-approve
+          fi
+
+      # Terraform Plan step
       - name: Terraform Plan
         run: terraform plan -out=tfplan
         working-directory: ./terraform
 
+      # Terraform Apply step
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
         working-directory: ./terraform
@@ -120,34 +140,3 @@ jobs:
       - name: Check Deployment Status
         run: |
           kubectl rollout status deployment/springboot-app --namespace default --timeout=300s
-
-  destroy:
-    runs-on: ubuntu-latest
-    if: failure()
-    needs: [terraform, build, deploy]
-    steps:
-      - name: Wait before destroy
-        run: sleep 300
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
-        working-directory: ./terraform
