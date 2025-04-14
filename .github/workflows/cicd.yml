@@ -30,7 +30,10 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Removed Terraform Init (S3 backend) and now using local state
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan
         working-directory: ./terraform
@@ -142,7 +145,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
-        run: terraform init -reconfigure
+        run: terraform init
         working-directory: ./terraform
 
       - name: Terraform Destroy
