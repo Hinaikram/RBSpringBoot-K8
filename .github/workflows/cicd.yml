@@ -9,9 +9,46 @@ on:
       - main
 
 jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        working-directory: ./terraform
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
+
+      - name: Export Terraform Outputs
+        id: terraform_outputs
+        run: |
+          echo "ECR_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_ENV
+          echo "CLUSTER_NAME=$(terraform output -raw cluster_name)" >> $GITHUB_ENV
+        working-directory: ./terraform
+
   build:
     runs-on: ubuntu-latest
-
+    needs: terraform
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -28,6 +65,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Run Tests
+        run: mvn test --no-transfer-progress
+
       - name: Build with Maven
         run: mvn clean install --no-transfer-progress
 
@@ -40,10 +80,12 @@ jobs:
 
       - name: Tag Docker image
         run: |
+          docker tag springboot-app:latest 715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:${{ github.sha }}
           docker tag springboot-app:latest 715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:latest
 
       - name: Push Docker image to ECR
         run: |
+          docker push 715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:${{ github.sha }}
           docker push 715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:latest
 
       - name: Upload JAR artifact
@@ -51,11 +93,10 @@ jobs:
         with:
           name: springboot-app
           path: target/*.jar
-/*
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -66,23 +107,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform-eks
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-        working-directory: terraform-eks
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-        working-directory: terraform-eks
 
       - name: Configure kubectl
         run: |
@@ -90,75 +114,14 @@ jobs:
 
       - name: Deploy Kubernetes Manifests
         run: |
-          kubectl apply -f kubernetes/deployment.yaml
+          kubectl apply -f kubernetes/deployment.yaml --namespace default
+          kubectl apply -f kubernetes/service.yaml --namespace default
 
       - name: Update Deployment Image and Restart
         run: |
-          kubectl set image deployment/springboot-app springboot-app=715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:latest
-          kubectl rollout restart deployment/springboot-app
+          kubectl set image deployment/springboot-app springboot-app=715841370482.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/rb-ecr:${{ github.sha }} --namespace default
+          kubectl rollout restart deployment/springboot-app --namespace default
 
       - name: Check Deployment Status
         run: |
-          kubectl rollout status deployment/springboot-app
-
-  destroy-on-failure:
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: failure()
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform-eks
-
-      - name: Terraform Destroy on Failure
-        run: terraform destroy -auto-approve
-        working-directory: terraform-eks
-
-  destroy:
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: success()
-
-    steps:
-      - name: Wait for 5 minutes
-        run: sleep 300
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: 1.5.0
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: terraform-eks
-
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
-        working-directory: terraform-eks
-*/
+          kubectl rollout status deployment/springboot-app --namespace default --timeout=300s
